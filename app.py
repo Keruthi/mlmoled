@@ -1,14 +1,19 @@
 import pandas as pd
 import numpy as np
 import pickle
-from flask import Flask, request, jsonify
+import os
+from flask import Flask, request, jsonify, send_file
 import matplotlib.pyplot as plt
 from io import BytesIO
-from flask import send_file
-# --- 1. Initialize Flask Application ---
+
+# -----------------------------
+# 1. Initialize Flask
+# -----------------------------
 app = Flask(__name__)
 
-# --- 2. Load model and preprocessors ---
+# -----------------------------
+# 2. Load Model & Preprocessors
+# -----------------------------
 model = None
 scaler = None
 one_hot_encoder = None
@@ -23,19 +28,23 @@ try:
     with open('logistic_regression_model.pkl', 'rb') as f:
         model = pickle.load(f)
 
-    print("Model loaded successfully ✅")
+    print("✅ Model loaded successfully")
 
 except Exception as e:
-    print("Model loading failed:", e)
+    print("❌ Model loading failed:", e)
 
 
-# --- 3. Home route ---
+# -----------------------------
+# 3. Home Route
+# -----------------------------
 @app.route('/')
 def home():
     return "ML API is running successfully 🚀"
 
 
-# --- 4. Prediction Endpoint ---
+# -----------------------------
+# 4. JSON Prediction Endpoint
+# -----------------------------
 @app.route('/predict', methods=['GET', 'POST'])
 def predict():
     try:
@@ -45,7 +54,7 @@ def predict():
         categorical_cols = ['Region', 'Country']
         numerical_cols = ['AirQuality']
 
-        # ✅ If GET request → show sample prediction
+        # If GET → use sample input
         if request.method == 'GET':
             data = {
                 "Region": "Asia",
@@ -88,41 +97,67 @@ def predict():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 400
+
+
+# -----------------------------
+# 5. Graph Prediction Endpoint
+# -----------------------------
 @app.route('/predict-graph', methods=['POST'])
 def predict_graph():
     try:
+        if model is None:
+            return jsonify({"error": "Model not loaded"}), 500
+
         data = request.get_json(force=True)
 
         categorical_cols = ['Region', 'Country']
         numerical_cols = ['AirQuality']
 
+        # Validate input
+        for col in categorical_cols + numerical_cols:
+            if col not in data:
+                return jsonify({"error": f"Missing field: {col}"}), 400
+
+        # Convert to DataFrame
         input_df = pd.DataFrame([data])
         input_df[numerical_cols] = input_df[numerical_cols].astype(float)
 
-        input_categorical = input_df[categorical_cols]
-        input_numerical = input_df[numerical_cols]
+        # SAME preprocessing as /predict
+        X_cat = one_hot_encoder.transform(input_df[categorical_cols])
+        X_cat_df = pd.DataFrame(
+            X_cat,
+            columns=one_hot_encoder.get_feature_names_out(categorical_cols)
+        )
 
-        X_cat = one_hot_encoder.transform(input_categorical)
-        X_num = scaler.transform(input_numerical)
+        X_num = scaler.transform(input_df[numerical_cols])
+        X_num_df = pd.DataFrame(X_num, columns=numerical_cols)
 
-        X_processed = np.concatenate([X_num, X_cat], axis=1)
+        X_processed = pd.concat([X_num_df, X_cat_df], axis=1)
 
+        # Prediction probabilities
         proba = model.predict_proba(X_processed)[0]
 
-        # Graph
-        plt.figure()
+        # Create graph
+        plt.figure(figsize=(5, 4))
         plt.bar(['Class 0', 'Class 1'], proba)
-        plt.title("Prediction Probability")
+        plt.xlabel("Classes")
+        plt.ylabel("Probability")
+        plt.title("Prediction Confidence")
 
         img = BytesIO()
-        plt.savefig(img, format='png')
+        plt.savefig(img, format='png', bbox_inches='tight')
+        plt.close()   # prevent memory leak
         img.seek(0)
 
         return send_file(img, mimetype='image/png')
 
     except Exception as e:
-        return jsonify({"error": str(e)})
+        return jsonify({"error": str(e)}), 400
 
-# --- 5. Run app ---
+
+# -----------------------------
+# 6. Run App (Render Compatible)
+# -----------------------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
