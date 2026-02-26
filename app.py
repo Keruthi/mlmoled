@@ -1,3 +1,6 @@
+import matplotlib
+matplotlib.use('Agg')  # ✅ MUST be first (important for Render)
+
 import pandas as pd
 import numpy as np
 import pickle
@@ -122,7 +125,7 @@ def predict_graph():
         input_df = pd.DataFrame([data])
         input_df[numerical_cols] = input_df[numerical_cols].astype(float)
 
-        # SAME preprocessing as /predict
+        # SAME preprocessing
         X_cat = one_hot_encoder.transform(input_df[categorical_cols])
         X_cat_df = pd.DataFrame(
             X_cat,
@@ -134,19 +137,20 @@ def predict_graph():
 
         X_processed = pd.concat([X_num_df, X_cat_df], axis=1)
 
-        # Prediction probabilities
+        # Prediction
         proba = model.predict_proba(X_processed)[0]
 
-        # Create graph
+        # Graph
         plt.figure(figsize=(5, 4))
         plt.bar(['Class 0', 'Class 1'], proba)
         plt.xlabel("Classes")
         plt.ylabel("Probability")
         plt.title("Prediction Confidence")
+        plt.tight_layout()
 
         img = BytesIO()
-        plt.savefig(img, format='png', bbox_inches='tight')
-        plt.close()   # prevent memory leak
+        plt.savefig(img, format='png')
+        plt.close()
         img.seek(0)
 
         return send_file(img, mimetype='image/png')
@@ -156,7 +160,7 @@ def predict_graph():
 
 
 # -----------------------------
-# 6. Run App (Render Compatible)
+# 6. Run App
 # -----------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
