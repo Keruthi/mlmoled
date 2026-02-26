@@ -1,86 +1,86 @@
-
 import pandas as pd
 import numpy as np
 import pickle
 from flask import Flask, request, jsonify
 
-# --- 1. Load Preprocessing Objects and Model ---
-# Load the scaler
-with open('scaler.pkl', 'rb') as f:
-    scaler = pickle.load(f)
-
-# Load the one-hot encoder
-with open('one_hot_encoder.pkl', 'rb') as f:
-    one_hot_encoder = pickle.load(f)
-
-# Load the logistic regression model
-with open('logistic_regression_model.pkl', 'rb') as f:
-    model = pickle.load(f)
-
-# --- 2. Initialize Flask Application ---
+# --- 1. Initialize Flask Application ---
 app = Flask(__name__)
 
-# --- 3. Define Prediction Endpoint ---
+# --- 2. Load model and preprocessors ---
+try:
+    with open('scaler.pkl', 'rb') as f:
+        scaler = pickle.load(f)
+
+    with open('one_hot_encoder.pkl', 'rb') as f:
+        one_hot_encoder = pickle.load(f)
+
+    with open('logistic_regression_model.pkl', 'rb') as f:
+        model = pickle.load(f)
+
+except Exception as e:
+    print("Model loading failed:", e)
+
+
+# --- 3. Home route (to check server) ---
+@app.route('/')
+def home():
+    return "ML API is running successfully"
+
+
+# --- 4. Prediction Endpoint ---
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
-        # Get JSON data from request
         data = request.get_json(force=True)
 
-        # Convert input data to pandas DataFrame
-        # Ensure the order of columns matches the training data
-        # and create a DataFrame with a single row for prediction
+        # Required columns
+        categorical_cols = ['Region', 'Country']
+        numerical_cols = ['AirQuality']
+
+        # Validate input
+        required_cols = categorical_cols + numerical_cols
+        for col in required_cols:
+            if col not in data:
+                return jsonify({'error': f'Missing field: {col}'}), 400
+
+        # Convert to DataFrame
         input_df = pd.DataFrame([data])
 
-        # Define the original categorical and numerical column names
-        # These should match the columns used during training
-        categorical_cols_trained = ['Region', 'Country'] # Based on previous notebook steps
-        numerical_cols_trained = ['AirQuality']         # Based on previous notebook steps
+        # Ensure correct datatype
+        input_df[numerical_cols] = input_df[numerical_cols].astype(float)
 
-        # Separate categorical and numerical columns from the input
-        input_categorical = input_df[categorical_cols_trained]
-        input_numerical = input_df[numerical_cols_trained]
+        # Separate features
+        input_categorical = input_df[categorical_cols]
+        input_numerical = input_df[numerical_cols]
 
-        # Apply One-Hot Encoding to categorical features
-        # Use transform, not fit_transform
-        X_categorical_encoded_input = one_hot_encoder.transform(input_categorical)
-        X_categorical_df_input = pd.DataFrame(X_categorical_encoded_input, 
-                                              columns=one_hot_encoder.get_feature_names_out(categorical_cols_trained))
+        # One-hot encoding
+        X_cat = one_hot_encoder.transform(input_categorical)
+        X_cat_df = pd.DataFrame(
+            X_cat,
+            columns=one_hot_encoder.get_feature_names_out(categorical_cols)
+        )
 
-        # Apply StandardScaler to numerical features
-        # Use transform, not fit_transform
-        X_numerical_scaled_input = scaler.transform(input_numerical)
-        X_numerical_df_input = pd.DataFrame(X_numerical_scaled_input, columns=numerical_cols_trained)
+        # Scaling
+        X_num = scaler.transform(input_numerical)
+        X_num_df = pd.DataFrame(X_num, columns=numerical_cols)
 
-        # Combine preprocessed features
-        # Ensure columns are in the same order as X_processed used during training
-        # Get the columns from the one_hot_encoder.get_feature_names_out()
-        # The order of columns for X_processed was numerical_cols then categorical_cols
-        processed_cols = numerical_cols_trained + list(one_hot_encoder.get_feature_names_out(categorical_cols_trained))
-        
-        X_processed_input = pd.concat([X_numerical_df_input, X_categorical_df_input], axis=1)
+        # Combine features
+        X_processed = pd.concat([X_num_df, X_cat_df], axis=1)
 
-        # Reindex to ensure the columns are in the exact order as during training
-        # (X_processed from training was `X_processed.columns`)
-        # Note: In a real scenario, you'd save X_processed.columns during training and load it here
-        # For this example, we'll assume the column order created by concat is consistent if feature names are consistent
-        # If X_processed.columns was saved, you would do: X_processed_input = X_processed_input.reindex(columns=saved_X_processed_columns, fill_value=0)
+        # Prediction
+        prediction = model.predict(X_processed)
+        proba = model.predict_proba(X_processed)
 
-        # Make prediction
-        prediction = model.predict(X_processed_input)
-        prediction_proba = model.predict_proba(X_processed_input)
-
-        # Return prediction as JSON response
         return jsonify({
-            'prediction': int(prediction[0]),
-            'probability_class_0': prediction_proba[0][0],
-            'probability_class_1': prediction_proba[0][1]
+            "prediction": int(prediction[0]),
+            "probability_class_0": float(proba[0][0]),
+            "probability_class_1": float(proba[0][1])
         })
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return jsonify({"error": str(e)}), 400
 
-# --- 4. Run the Flask app ---
-if __name__ == '__main__':
-    # In a production environment, use a more robust server like Gunicorn
-    app.run(host='0.0.0.0', port=5000, debug=True)
+
+# --- 5. Run app ---
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
