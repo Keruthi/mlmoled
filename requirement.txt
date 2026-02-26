@@ -2,5 +2,4 @@ pandas
 numpy 
 pickle
 Flask
-request
-jsonify
+
