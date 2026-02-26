@@ -37,7 +37,6 @@ try:
 except Exception as e:
     print("❌ Model loading failed:", e)
 
-
 # -----------------------------
 # 3. Home Route
 # -----------------------------
