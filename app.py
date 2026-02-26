@@ -2,7 +2,9 @@ import pandas as pd
 import numpy as np
 import pickle
 from flask import Flask, request, jsonify
-
+import matplotlib.pyplot as plt
+from io import BytesIO
+from flask import send_file
 # --- 1. Initialize Flask Application ---
 app = Flask(__name__)
 
@@ -86,7 +88,40 @@ def predict():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 400
+@app.route('/predict-graph', methods=['POST'])
+def predict_graph():
+    try:
+        data = request.get_json(force=True)
 
+        categorical_cols = ['Region', 'Country']
+        numerical_cols = ['AirQuality']
+
+        input_df = pd.DataFrame([data])
+        input_df[numerical_cols] = input_df[numerical_cols].astype(float)
+
+        input_categorical = input_df[categorical_cols]
+        input_numerical = input_df[numerical_cols]
+
+        X_cat = one_hot_encoder.transform(input_categorical)
+        X_num = scaler.transform(input_numerical)
+
+        X_processed = np.concatenate([X_num, X_cat], axis=1)
+
+        proba = model.predict_proba(X_processed)[0]
+
+        # Graph
+        plt.figure()
+        plt.bar(['Class 0', 'Class 1'], proba)
+        plt.title("Prediction Probability")
+
+        img = BytesIO()
+        plt.savefig(img, format='png')
+        img.seek(0)
+
+        return send_file(img, mimetype='image/png')
+
+    except Exception as e:
+        return jsonify({"error": str(e)})
 
 # --- 5. Run app ---
 if __name__ == "__main__":
