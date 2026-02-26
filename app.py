@@ -8,12 +8,13 @@ import os
 from flask import Flask, request, jsonify, send_file
 import matplotlib.pyplot as plt
 from io import BytesIO
+from flask_cors import CORS
 
 # -----------------------------
 # 1. Initialize Flask
 # -----------------------------
 app = Flask(__name__)
-
+CORS(app)  # ✅ Enables frontend access
 # -----------------------------
 # 2. Load Model & Preprocessors
 # -----------------------------
