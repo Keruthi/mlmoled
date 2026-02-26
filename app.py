@@ -7,6 +7,10 @@ from flask import Flask, request, jsonify
 app = Flask(__name__)
 
 # --- 2. Load model and preprocessors ---
+model = None
+scaler = None
+one_hot_encoder = None
+
 try:
     with open('scaler.pkl', 'rb') as f:
         scaler = pickle.load(f)
@@ -17,54 +21,57 @@ try:
     with open('logistic_regression_model.pkl', 'rb') as f:
         model = pickle.load(f)
 
+    print("Model loaded successfully ✅")
+
 except Exception as e:
     print("Model loading failed:", e)
 
 
-# --- 3. Home route (to check server) ---
+# --- 3. Home route ---
 @app.route('/')
 def home():
-    return "ML API is running successfully"
+    return "ML API is running successfully 🚀"
 
 
 # --- 4. Prediction Endpoint ---
-@app.route('/predict', methods=['POST'])
+@app.route('/predict', methods=['GET', 'POST'])
 def predict():
     try:
-        data = request.get_json(force=True)
+        if model is None:
+            return jsonify({"error": "Model not loaded"}), 500
 
-        # Required columns
         categorical_cols = ['Region', 'Country']
         numerical_cols = ['AirQuality']
 
+        # ✅ If GET request → show sample prediction
+        if request.method == 'GET':
+            data = {
+                "Region": "Asia",
+                "Country": "India",
+                "AirQuality": 80
+            }
+        else:
+            data = request.get_json()
+
         # Validate input
-        required_cols = categorical_cols + numerical_cols
-        for col in required_cols:
+        for col in categorical_cols + numerical_cols:
             if col not in data:
-                return jsonify({'error': f'Missing field: {col}'}), 400
+                return jsonify({"error": f"Missing field: {col}"}), 400
 
         # Convert to DataFrame
         input_df = pd.DataFrame([data])
-
-        # Ensure correct datatype
         input_df[numerical_cols] = input_df[numerical_cols].astype(float)
 
-        # Separate features
-        input_categorical = input_df[categorical_cols]
-        input_numerical = input_df[numerical_cols]
-
-        # One-hot encoding
-        X_cat = one_hot_encoder.transform(input_categorical)
+        # Preprocessing
+        X_cat = one_hot_encoder.transform(input_df[categorical_cols])
         X_cat_df = pd.DataFrame(
             X_cat,
             columns=one_hot_encoder.get_feature_names_out(categorical_cols)
         )
 
-        # Scaling
-        X_num = scaler.transform(input_numerical)
+        X_num = scaler.transform(input_df[numerical_cols])
         X_num_df = pd.DataFrame(X_num, columns=numerical_cols)
 
-        # Combine features
         X_processed = pd.concat([X_num_df, X_cat_df], axis=1)
 
         # Prediction
